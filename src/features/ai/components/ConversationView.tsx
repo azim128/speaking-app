@@ -20,28 +20,34 @@ function ConversationView() {
   } = useConversation()
 
   const bottomRef = useRef<HTMLDivElement>(null)
-  const { replayingId, replay, stop: stopReplay } = useAudioReplay()
+  const { replayingId, replayActiveRef, replay, stop: stopReplay } = useAudioReplay()
 
   // Prevent concurrent pipeline starts — guard against the effect firing twice
   // in strict mode or while a pipeline is already running.
   const pipelineRunning = useRef(false)
 
   // ── Auto-start listening whenever the pipeline is idle ──────────────────────
-  // IMPORTANT: skip if a replay is active — replay also runs during 'idle'.
+  // Guards:
+  //   1. replayActiveRef.current — set SYNCHRONOUSLY by replay() before React
+  //      re-renders, so we never race with async abort completions.
+  //   2. replayingId state — secondary check once React has settled.
   useEffect(() => {
     if (conversationState !== 'idle') {
       pipelineRunning.current = true
       return
     }
 
-    // Never auto-start while the user is replaying a message.
-    if (replayingId !== null) return
+    // Never auto-start while a replay is starting or already playing.
+    if (replayActiveRef.current || replayingId !== null) return
 
     if (pipelineRunning.current) {
       // Pipeline just finished — brief settle delay before reopening the mic.
       pipelineRunning.current = false
       const timer = setTimeout(() => {
-        void startVoiceInput()
+        // Double-check replay hasn't started during the delay.
+        if (!replayActiveRef.current) {
+          void startVoiceInput()
+        }
       }, 600)
       return () => clearTimeout(timer)
     }
@@ -150,10 +156,9 @@ function ConversationView() {
               message={message}
               isReplaying={replayingId === message.id}
               onReplay={(id, text) => {
-                // If mic is open, abort it so we don't fight over the audio
-                if (conversationState === 'listening') {
-                  stopListening()
-                }
+                // Always abort mic before replay — stopListening is a no-op
+                // if the mic isn't currently open.
+                stopListening()
                 replay(id, text)
               }}
               replayDisabled={replayBlocked}
