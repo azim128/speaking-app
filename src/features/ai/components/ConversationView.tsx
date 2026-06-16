@@ -70,6 +70,16 @@ function ConversationView() {
     }
   }, [conversationState, replayingId, stopReplay])
 
+  // ── Enforce mic-off during replay ──────────────────────────────────────────
+  // This is the authoritative guard. Runs whenever replayingId transitions
+  // from null to non-null (i.e. replay starts). Stops the mic unconditionally
+  // so no timing race between the click handler and async abort can sneak through.
+  useEffect(() => {
+    if (replayingId !== null) {
+      stopListening()
+    }
+  }, [replayingId, stopListening])
+
   // Guard: should not be reachable without a character, but just in case
   if (!selectedCharacter) {
     return (
@@ -184,6 +194,7 @@ function ConversationView() {
       <footer className="shrink-0 border-t border-gray-200 bg-white px-4 py-6 flex justify-center">
         <VoiceButton
           conversationState={conversationState}
+          isReplaying={replayingId !== null}
           onStopSpeaking={() => {
             stopSpeaking()
           }}

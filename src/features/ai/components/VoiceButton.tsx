@@ -3,6 +3,8 @@ import type { ConversationState } from '../types/conversation.types'
 
 type VoiceButtonProps = {
   conversationState: ConversationState
+  /** True when a message replay is actively playing — mic is off during this time. */
+  isReplaying?: boolean
   onStopSpeaking: () => void
 }
 
@@ -56,8 +58,13 @@ const STATE_CONFIG: Record<
   },
 }
 
-function VoiceButton({ conversationState, onStopSpeaking }: VoiceButtonProps) {
-  const { label, icon, pulse, color, ring } = STATE_CONFIG[conversationState]
+function VoiceButton({ conversationState, isReplaying = false, onStopSpeaking }: VoiceButtonProps) {
+  // Replay overrides conversationState display — mic is off, audio is playing.
+  const effectiveConfig = isReplaying
+    ? { label: 'Replaying…', icon: '🔁', pulse: true, color: 'bg-teal-500', ring: 'ring-teal-300' }
+    : STATE_CONFIG[conversationState]
+
+  const { label, icon, pulse, color, ring } = effectiveConfig
 
   return (
     <div className="flex flex-col items-center gap-4 select-none">
