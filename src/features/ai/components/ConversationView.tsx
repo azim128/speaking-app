@@ -1,10 +1,14 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { ROUTES } from '@/constants'
 import { useAudioReplay } from '../hooks/useAudioReplay'
 import { useConversation } from '../hooks/useConversation'
 import { MessageBubble } from './MessageBubble'
 import { VoiceButton } from './VoiceButton'
+
+type ListenMode = 'auto' | 'manual'
+
+const MODE_KEY = 'speaking-listen-mode'
 
 function ConversationView() {
   const navigate = useNavigate()
@@ -22,16 +26,37 @@ function ConversationView() {
   const bottomRef = useRef<HTMLDivElement>(null)
   const { replayingId, replayActiveRef, replay, stop: stopReplay } = useAudioReplay()
 
-  // Prevent concurrent pipeline starts — guard against the effect firing twice
-  // in strict mode or while a pipeline is already running.
+  // ── Listen mode ─────────────────────────────────────────────────────────────
+  const [listenMode, setListenMode] = useState<ListenMode>(() => {
+    try {
+      const saved = localStorage.getItem(MODE_KEY)
+      return saved === 'manual' ? 'manual' : 'auto'
+    } catch {
+      return 'auto'
+    }
+  })
+
+  function toggleMode() {
+    const next: ListenMode = listenMode === 'auto' ? 'manual' : 'auto'
+    setListenMode(next)
+    try { localStorage.setItem(MODE_KEY, next) } catch { /* ignore */ }
+
+    // When switching to manual, stop any active listening immediately.
+    if (next === 'manual') {
+      stopListening()
+    }
+  }
+
+  // ── Auto-listen — only active in 'auto' mode ──────────────────────────────
   const pipelineRunning = useRef(false)
 
-  // ── Auto-start listening whenever the pipeline is idle ──────────────────────
-  // Guards:
-  //   1. replayActiveRef.current — set SYNCHRONOUSLY by replay() before React
-  //      re-renders, so we never race with async abort completions.
-  //   2. replayingId state — secondary check once React has settled.
   useEffect(() => {
+    if (listenMode !== 'auto') {
+      // Reset the pipeline flag so auto-listen starts fresh if mode switches back.
+      pipelineRunning.current = false
+      return
+    }
+
     if (conversationState !== 'idle') {
       pipelineRunning.current = true
       return
@@ -41,10 +66,8 @@ function ConversationView() {
     if (replayActiveRef.current || replayingId !== null) return
 
     if (pipelineRunning.current) {
-      // Pipeline just finished — brief settle delay before reopening the mic.
       pipelineRunning.current = false
       const timer = setTimeout(() => {
-        // Double-check replay hasn't started during the delay.
         if (!replayActiveRef.current) {
           void startVoiceInput()
         }
@@ -52,22 +75,18 @@ function ConversationView() {
       return () => clearTimeout(timer)
     }
 
-    // Very first mount — start immediately.
+    // Very first mount in auto mode — start immediately.
     pipelineRunning.current = true
     void startVoiceInput()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversationState, replayingId])
+  }, [conversationState, replayingId, listenMode])
 
   // Auto-scroll when new messages arrive
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Cancel an active replay ONLY when the AI pipeline is actively processing
-  // (transcribing → translating → thinking → speaking).
-  // DO NOT cancel during 'listening' — that state is active right after clicking
-  // replay (the STT abort is async), and cancelling here would reset replayingId
-  // and replayActiveRef before the audio even starts.
+  // Cancel replay when AI pipeline actively processes (not during 'listening')
   useEffect(() => {
     const pipelineProcessing =
       conversationState === 'transcribing' ||
@@ -80,10 +99,7 @@ function ConversationView() {
     }
   }, [conversationState, replayingId, stopReplay])
 
-  // ── Enforce mic-off during replay ──────────────────────────────────────────
-  // This is the authoritative guard. Runs whenever replayingId transitions
-  // from null to non-null (i.e. replay starts). Stops the mic unconditionally
-  // so no timing race between the click handler and async abort can sneak through.
+  // Enforce mic-off the moment replay starts
   useEffect(() => {
     if (replayingId !== null) {
       stopListening()
@@ -107,13 +123,14 @@ function ConversationView() {
   }
 
   const isActive = conversationState !== 'idle'
-  // Replay is blocked only during processing/thinking/speaking — NOT during listening.
-  // During listening the user can click replay to abort the mic and hear the message again.
   const replayBlocked =
     conversationState === 'transcribing' ||
     conversationState === 'translating' ||
     conversationState === 'thinking' ||
     conversationState === 'speaking'
+
+  // In manual mode the button is clickable only when idle (not processing, not replaying)
+  const manualClickable = listenMode === 'manual' && !isActive && replayingId === null
 
   return (
     <div className="flex h-full flex-col">
@@ -134,7 +151,24 @@ function ConversationView() {
             {selectedCharacter.description}
           </p>
         </div>
+
         <div className="flex items-center gap-2 shrink-0">
+          {/* ── Mode toggle pill ── */}
+          <button
+            id="listen-mode-toggle"
+            type="button"
+            onClick={toggleMode}
+            title={listenMode === 'auto' ? 'Switch to Tap to Speak' : 'Switch to Auto-Listen'}
+            className="flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100 transition-colors select-none"
+          >
+            <span
+              className={`inline-block h-2 w-2 rounded-full transition-colors ${
+                listenMode === 'auto' ? 'bg-green-500' : 'bg-blue-500'
+              }`}
+            />
+            {listenMode === 'auto' ? 'Auto' : 'Manual'}
+          </button>
+
           <button
             type="button"
             onClick={clearMessages}
@@ -165,8 +199,9 @@ function ConversationView() {
               Hi! I'm {selectedCharacter.name}.
             </p>
             <p className="max-w-xs text-sm text-gray-400">
-              I'm listening — just speak in your native language and I'll
-              respond in English!
+              {listenMode === 'auto'
+                ? "I'm always listening — just speak in your native language!"
+                : 'Tap the microphone button below and speak in your native language.'}
             </p>
           </div>
         ) : (
@@ -176,8 +211,6 @@ function ConversationView() {
               message={message}
               isReplaying={replayingId === message.id}
               onReplay={(id, text) => {
-                // Always abort mic before replay — stopListening is a no-op
-                // if the mic isn't currently open.
                 stopListening()
                 replay(id, text)
               }}
@@ -200,11 +233,16 @@ function ConversationView() {
         <div ref={bottomRef} />
       </section>
 
-      {/* ── Status orb ───────────────────────────────────────────────────── */}
+      {/* ── Footer / voice control ───────────────────────────────────────── */}
       <footer className="shrink-0 border-t border-gray-200 bg-white px-4 py-6 flex justify-center">
         <VoiceButton
           conversationState={conversationState}
           isReplaying={replayingId !== null}
+          listenMode={listenMode}
+          onTapToSpeak={manualClickable ? () => {
+            stopReplay()
+            void startVoiceInput()
+          } : undefined}
           onStopSpeaking={() => {
             stopSpeaking()
           }}
