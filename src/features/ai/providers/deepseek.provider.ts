@@ -39,6 +39,7 @@ function toDeepSeekRole(role: Message['role']): DeepSeekRole {
   return role === 'user' ? 'user' : 'assistant'
 }
 
+
 // ─── Factory ──────────────────────────────────────────────────────────────────
 
 function createDeepSeekProvider(
@@ -76,7 +77,7 @@ function createDeepSeekProvider(
           }),
         },
       )
-
+      console.log(res)
       if (!res.ok) {
         const errText = await res.text()
         throw new Error(`DeepSeek API error ${res.status}: ${errText}`)
