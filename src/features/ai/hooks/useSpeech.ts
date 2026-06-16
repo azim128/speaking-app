@@ -8,6 +8,8 @@ type UseSpeechReturn = {
   isTTSSupported: boolean
   /** Start microphone capture; resolves with the transcript. */
   startListening: (language?: string) => Promise<string>
+  /** Abort the active microphone session immediately. */
+  stopListening: () => void
   /** Convert text to speech using the active TTS provider. */
   speak: (text: string) => Promise<void>
   stopSpeaking: () => void
@@ -38,6 +40,10 @@ function useSpeech(): UseSpeechReturn {
     }
   }, [])
 
+  const stopListening = useCallback((): void => {
+    speechService.stopListening()
+  }, [])
+
   const stopSpeaking = useCallback((): void => {
     speechService.stopSpeaking()
     setIsSpeaking(false)
@@ -49,6 +55,7 @@ function useSpeech(): UseSpeechReturn {
     isSTTSupported: speechService.isSTTSupported(),
     isTTSSupported: speechService.isTTSSupported(),
     startListening,
+    stopListening,
     speak,
     stopSpeaking,
   }

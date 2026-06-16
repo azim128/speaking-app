@@ -78,6 +78,9 @@ type TextToSpeechOptions = {
 
 // ─── Service ──────────────────────────────────────────────────────────────────
 
+// Module-level ref so stopListening() can reach the active recognition instance.
+let _activeRecognition: SpeechRecognitionInstance | null = null
+
 const speechService = {
   isSTTSupported: (): boolean => getSpeechRecognitionCtor() !== null,
 
@@ -101,6 +104,7 @@ const speechService = {
       }
 
       const recognition: SpeechRecognitionInstance = new Ctor()
+      _activeRecognition = recognition
       recognition.lang = options.language ?? 'tr-TR'
       recognition.continuous = false
       recognition.interimResults = false
@@ -109,6 +113,7 @@ const speechService = {
 
       recognition.onresult = (event) => {
         hasResult = true
+        _activeRecognition = null
         const results = Array.from(
           { length: event.results.length },
           (_, i) => event.results[i]?.[0]?.transcript ?? '',
@@ -117,8 +122,9 @@ const speechService = {
       }
 
       recognition.onerror = (event) => {
-        // 'no-speech' is not a real error — resolve with empty string
-        if (event.error === 'no-speech') {
+        _activeRecognition = null
+        // 'no-speech' and 'aborted' are not real errors — resolve with empty string
+        if (event.error === 'no-speech' || event.error === 'aborted') {
           resolve('')
         } else {
           reject(new Error(`Speech recognition error: ${event.error}`))
@@ -126,6 +132,7 @@ const speechService = {
       }
 
       recognition.onend = () => {
+        _activeRecognition = null
         if (!hasResult) resolve('')
       }
 
@@ -173,6 +180,14 @@ const speechService = {
   stopSpeaking: (): void => {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.cancel()
+    }
+  },
+
+  /** Abort the active microphone session immediately (resolves with ''). */
+  stopListening: (): void => {
+    if (_activeRecognition) {
+      _activeRecognition.abort()
+      _activeRecognition = null
     }
   },
 }

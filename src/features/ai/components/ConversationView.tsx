@@ -15,6 +15,7 @@ function ConversationView() {
     selectedCharacter,
     startVoiceInput,
     stopSpeaking,
+    stopListening,
     clearMessages,
   } = useConversation()
 
@@ -80,6 +81,13 @@ function ConversationView() {
   }
 
   const isActive = conversationState !== 'idle'
+  // Replay is blocked only during processing/thinking/speaking — NOT during listening.
+  // During listening the user can click replay to abort the mic and hear the message again.
+  const replayBlocked =
+    conversationState === 'transcribing' ||
+    conversationState === 'translating' ||
+    conversationState === 'thinking' ||
+    conversationState === 'speaking'
 
   return (
     <div className="flex h-full flex-col">
@@ -141,8 +149,14 @@ function ConversationView() {
               key={message.id}
               message={message}
               isReplaying={replayingId === message.id}
-              onReplay={replay}
-              replayDisabled={isActive}
+              onReplay={(id, text) => {
+                // If mic is open, abort it so we don't fight over the audio
+                if (conversationState === 'listening') {
+                  stopListening()
+                }
+                replay(id, text)
+              }}
+              replayDisabled={replayBlocked}
             />
           ))
         )}
