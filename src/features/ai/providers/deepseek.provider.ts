@@ -72,6 +72,10 @@ function createDeepSeekProvider(
           body: JSON.stringify({
             model,
             messages,
+            thinking: {
+              type: "disabled",
+            },
+            reasoning_effort: "low",
             max_tokens: 512,
             temperature: 0.8,
           }),
