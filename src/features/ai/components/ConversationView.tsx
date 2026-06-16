@@ -63,9 +63,19 @@ function ConversationView() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Cancel an active replay when the main pipeline becomes active.
+  // Cancel an active replay ONLY when the AI pipeline is actively processing
+  // (transcribing → translating → thinking → speaking).
+  // DO NOT cancel during 'listening' — that state is active right after clicking
+  // replay (the STT abort is async), and cancelling here would reset replayingId
+  // and replayActiveRef before the audio even starts.
   useEffect(() => {
-    if (conversationState !== 'idle' && replayingId !== null) {
+    const pipelineProcessing =
+      conversationState === 'transcribing' ||
+      conversationState === 'translating' ||
+      conversationState === 'thinking' ||
+      conversationState === 'speaking'
+
+    if (pipelineProcessing && replayingId !== null) {
       stopReplay()
     }
   }, [conversationState, replayingId, stopReplay])
