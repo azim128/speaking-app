@@ -14,11 +14,42 @@ function ConversationView() {
     error,
     selectedCharacter,
     startVoiceInput,
+    stopSpeaking,
     clearMessages,
   } = useConversation()
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const { replayingId, replay, stop: stopReplay } = useAudioReplay()
+
+  // Prevent concurrent pipeline starts — guard against the effect firing twice
+  // in strict mode or while a pipeline is already running.
+  const pipelineRunning = useRef(false)
+
+  // ── Auto-start listening whenever the pipeline is idle ──────────────────────
+  useEffect(() => {
+    if (conversationState !== 'idle') {
+      pipelineRunning.current = conversationState !== 'idle'
+      return
+    }
+
+    // State just became idle (either fresh mount or pipeline finished)
+    if (pipelineRunning.current) {
+      // Pipeline finished — small gap before restarting so the browser's STT
+      // engine (and the user) have time to settle.
+      pipelineRunning.current = false
+      const timer = setTimeout(() => {
+        stopReplay()
+        void startVoiceInput()
+      }, 600)
+      return () => clearTimeout(timer)
+    }
+
+    // Very first mount — start immediately
+    pipelineRunning.current = true
+    stopReplay()
+    void startVoiceInput()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversationState])
 
   // Auto-scroll when new messages arrive
   useEffect(() => {
@@ -26,11 +57,6 @@ function ConversationView() {
   }, [messages])
 
   // Cancel an active replay when the main pipeline becomes active.
-  //
-  // IMPORTANT: only call stopReplay() when replayingId !== null.
-  // Calling it unconditionally would invoke speechSynthesis.cancel() the
-  // moment conversationState becomes 'speaking', which would immediately
-  // interrupt the pipeline's own TTS and cause a spurious 'interrupted' error.
   useEffect(() => {
     if (conversationState !== 'idle' && replayingId !== null) {
       stopReplay()
@@ -105,8 +131,8 @@ function ConversationView() {
               Hi! I'm {selectedCharacter.name}.
             </p>
             <p className="max-w-xs text-sm text-gray-400">
-              Press the microphone button and speak in your native language.
-              I'll respond in English!
+              I'm listening — just speak in your native language and I'll
+              respond in English!
             </p>
           </div>
         ) : (
@@ -135,15 +161,12 @@ function ConversationView() {
         <div ref={bottomRef} />
       </section>
 
-      {/* ── Voice input ───────────────────────────────────────────────────── */}
+      {/* ── Status orb ───────────────────────────────────────────────────── */}
       <footer className="shrink-0 border-t border-gray-200 bg-white px-4 py-6 flex justify-center">
         <VoiceButton
           conversationState={conversationState}
-          onClick={() => {
-            // Always cancel any replay before starting the pipeline so
-            // there is never more than one audio source at once.
-            stopReplay()
-            void startVoiceInput()
+          onStopSpeaking={() => {
+            stopSpeaking()
           }}
         />
       </footer>

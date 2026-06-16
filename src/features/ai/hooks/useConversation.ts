@@ -29,7 +29,7 @@ function useConversation() {
   const clearMessages = useConversationStore((s) => s.clearMessages)
   const selectedCharacter = useCharacterStore((s) => s.selectedCharacter)
 
-  const { startListening, speak, isListening, isSpeaking } = useSpeech()
+  const { startListening, speak, stopSpeaking, isListening, isSpeaking } = useSpeech()
 
   // ── Core pipeline ─────────────────────────────────────────────────────────
 
@@ -127,6 +127,7 @@ function useConversation() {
     isSpeaking,
     sendMessage,
     startVoiceInput,
+    stopSpeaking,
     clearMessages,
   }
 }
