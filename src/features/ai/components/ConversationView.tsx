@@ -26,30 +26,30 @@ function ConversationView() {
   const pipelineRunning = useRef(false)
 
   // ── Auto-start listening whenever the pipeline is idle ──────────────────────
+  // IMPORTANT: skip if a replay is active — replay also runs during 'idle'.
   useEffect(() => {
     if (conversationState !== 'idle') {
-      pipelineRunning.current = conversationState !== 'idle'
+      pipelineRunning.current = true
       return
     }
 
-    // State just became idle (either fresh mount or pipeline finished)
+    // Never auto-start while the user is replaying a message.
+    if (replayingId !== null) return
+
     if (pipelineRunning.current) {
-      // Pipeline finished — small gap before restarting so the browser's STT
-      // engine (and the user) have time to settle.
+      // Pipeline just finished — brief settle delay before reopening the mic.
       pipelineRunning.current = false
       const timer = setTimeout(() => {
-        stopReplay()
         void startVoiceInput()
       }, 600)
       return () => clearTimeout(timer)
     }
 
-    // Very first mount — start immediately
+    // Very first mount — start immediately.
     pipelineRunning.current = true
-    stopReplay()
     void startVoiceInput()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversationState])
+  }, [conversationState, replayingId])
 
   // Auto-scroll when new messages arrive
   useEffect(() => {
