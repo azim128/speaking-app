@@ -12,6 +12,7 @@
 
 import { env } from '@/config/env'
 import type { AIProvider, AIProviderName } from '../types/ai.types'
+import { createClaudeProvider } from './claude.provider'
 import { createDeepSeekProvider } from './deepseek.provider'
 import { createGeminiProvider } from './gemini.provider'
 import { createGroqProvider } from './groq.provider'
@@ -57,8 +58,16 @@ function getProvider(): AIProvider {
       return createDeepSeekProvider(env.VITE_DEEPSEEK_API_KEY)
     }
 
+    case 'claude': {
+      if (!env.VITE_CLAUDE_API_KEY) {
+        throw new Error(
+          'VITE_CLAUDE_API_KEY is not set. Add it to your .env file.',
+        )
+      }
+      return createClaudeProvider(env.VITE_CLAUDE_API_KEY)
+    }
+
     // Future providers: add cases here without touching any other file.
-    // case 'claude':      { ... }
     // case 'azure-openai': { ... }
     // case 'ollama':      { ... }
 
@@ -66,7 +75,7 @@ function getProvider(): AIProvider {
       throw new Error(
         `Unknown AI provider: "${name}". ` +
           'Check VITE_AI_PROVIDER in your .env file. ' +
-          'Supported values: gemini, openai, groq, deepseek',
+          'Supported values: gemini, openai, claude, groq, deepseek',
       )
   }
 }
